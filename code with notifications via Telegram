@@ -1,0 +1,72 @@
+import ccxt
+import time
+from telegram import Bot
+
+# Список бирж для арбитража
+exchanges = {
+    'binance': ccxt.binance(),
+    'kraken': ccxt.kraken(),
+    'coinbasepro': ccxt.coinbasepro()
+}
+
+# Товар для арбитража (например, BTC/USDT)
+symbol = 'BTC/USDT'
+
+# Минимальная разница для арбитража (в процентах)
+min_arbitrage_percentage = 0.5
+
+# Инициализация Telegram-бота
+TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'  # Замените на ваш токен
+CHAT_ID = 'YOUR_CHAT_ID'  # Замените на ваш Chat ID
+bot = Bot(token=TELEGRAM_TOKEN)
+
+def fetch_price(exchange, symbol):
+    try:
+        ticker = exchange.fetch_ticker(symbol)
+        return ticker['ask']  # или 'bid', в зависимости от того, что вам нужно
+    except Exception as e:
+        print(f"Error fetching price from {exchange.name}: {e}")
+        return None
+
+def send_telegram_message(message):
+    try:
+        bot.send_message(chat_id=CHAT_ID, text=message)
+    except Exception as e:
+        print(f"Error sending Telegram message: {e}")
+
+def check_arbitrage_opportunity():
+    prices = {}
+
+    # Получаем цены с каждой биржи
+    for name, exchange in exchanges.items():
+        price = fetch_price(exchange, symbol)
+        if price:
+            prices[name] = price
+            print(f"Price on {name}: {price}")
+
+    # Находим максимальную и минимальную цену
+    if len(prices) > 1:
+        max_price = max(prices.values())
+        min_price = min(prices.values())
+
+        # Вычисляем разницу в процентах
+        price_diff_percentage = ((max_price - min_price) / min_price) * 100
+
+        print(f"Max price: {max_price}, Min price: {min_price}")
+        print(f"Price difference: {price_diff_percentage:.2f}%")
+
+        # Проверяем, если разница превышает порог
+        if price_diff_percentage >= min_arbitrage_percentage:
+            message = f"Arbitrage opportunity detected!\nPrice difference: {price_diff_percentage:.2f}%\nMax price: {max_price}\nMin price: {min_price}"
+            print(message)
+            send_telegram_message(message)
+        else:
+            print("No arbitrage opportunity.")
+    else:
+        print("Not enough exchanges to compare prices.")
+
+if __name__ == '__main__':
+    while True:
+        print("\nChecking for arbitrage opportunities...")
+        check_arbitrage_opportunity()
+        time.sleep(10)  # Ожидаем 10 секунд перед следующим запросом
