@@ -1,0 +1,1 @@
+The arbitrage bot will analyse the difference in prices on different exchanges, you can use libraries to work with the API of cryptocurrency exchanges, for example, ccxt (universal library for working with cryptocurrency exchanges). With the help of this library, you can connect to different exchanges and get up-to-date data on cryptocurrency prices.
