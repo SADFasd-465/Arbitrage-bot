@@ -1,6 +1,12 @@
 import ccxt
 import time
+import logging
+import asyncio
 from telegram import Bot
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Список бирж для арбитража
 exchanges = {
@@ -20,29 +26,39 @@ TELEGRAM_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'  # Замените на ваш то�
 CHAT_ID = 'YOUR_CHAT_ID'  # Замените на ваш Chat ID
 bot = Bot(token=TELEGRAM_TOKEN)
 
-def fetch_price(exchange, symbol):
+# Функция для получения цены с биржи
+async def fetch_price(exchange, symbol):
     try:
-        ticker = exchange.fetch_ticker(symbol)
+        ticker = await exchange.fetch_ticker(symbol)
         return ticker['ask']  # или 'bid', в зависимости от того, что вам нужно
     except Exception as e:
-        print(f"Error fetching price from {exchange.name}: {e}")
+        logger.error(f"Error fetching price from {exchange.name}: {e}")
         return None
 
+# Функция для отправки сообщений в Telegram
 def send_telegram_message(message):
     try:
         bot.send_message(chat_id=CHAT_ID, text=message)
     except Exception as e:
-        print(f"Error sending Telegram message: {e}")
+        logger.error(f"Error sending Telegram message: {e}")
 
-def check_arbitrage_opportunity():
+# Основная функция для проверки арбитражных возможностей
+async def check_arbitrage_opportunity():
     prices = {}
 
     # Получаем цены с каждой биржи
+    tasks = []
     for name, exchange in exchanges.items():
-        price = fetch_price(exchange, symbol)
+        tasks.append(fetch_price(exchange, symbol))
+    
+    # Асинхронно получаем цены
+    results = await asyncio.gather(*tasks)
+
+    for i, price in enumerate(results):
         if price:
-            prices[name] = price
-            print(f"Price on {name}: {price}")
+            exchange_name = list(exchanges.keys())[i]
+            prices[exchange_name] = price
+            logger.info(f"Price on {exchange_name}: {price}")
 
     # Находим максимальную и минимальную цену
     if len(prices) > 1:
@@ -52,21 +68,28 @@ def check_arbitrage_opportunity():
         # Вычисляем разницу в процентах
         price_diff_percentage = ((max_price - min_price) / min_price) * 100
 
-        print(f"Max price: {max_price}, Min price: {min_price}")
-        print(f"Price difference: {price_diff_percentage:.2f}%")
+        logger.info(f"Max price: {max_price}, Min price: {min_price}")
+        logger.info(f"Price difference: {price_diff_percentage:.2f}%")
 
         # Проверяем, если разница превышает порог
         if price_diff_percentage >= min_arbitrage_percentage:
             message = f"Arbitrage opportunity detected!\nPrice difference: {price_diff_percentage:.2f}%\nMax price: {max_price}\nMin price: {min_price}"
-            print(message)
+            logger.info(message)
             send_telegram_message(message)
         else:
-            print("No arbitrage opportunity.")
+            logger.info("No arbitrage opportunity.")
     else:
-        print("Not enough exchanges to compare prices.")
+        logger.warning("Not enough exchanges to compare prices.")
+
+# Функция для запуска бота
+async def run_bot():
+    while True:
+        logger.info("\nChecking for arbitrage opportunities...")
+        await check_arbitrage_opportunity()
+        await asyncio.sleep(10)  # Ожидаем 10 секунд перед следующим запросом
 
 if __name__ == '__main__':
-    while True:
-        print("\nChecking for arbitrage opportunities...")
-        check_arbitrage_opportunity()
-        time.sleep(10)  # Ожидаем 10 секунд перед следующим запросом
+    try:
+        asyncio.run(run_bot())
+    except Exception as e:
+        logger.error(f"Error running bot: {e}")
